@@ -67,6 +67,7 @@ body {
 
 .start-buttons:hover{
     background: rgba(255, 255, 255, 0.9);
+    transform: scale(1.02);
 }
 
 #main-cat-picture {

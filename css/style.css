@@ -11,19 +11,27 @@ body {
     justify-content: center;
     height: 100vh;
     gap: 30px;
+    background: url("/images/menu-bg.png") no-repeat center center fixed;
+    background-size: cover;
 }
 
 #game-title {
-    font-size: 120px;
-    margin-top: -60px;
-    margin-bottom: 50px;
+    font-size: 70px;
+    margin-bottom: 30px;
 }
 
 .start-buttons {
     border: 2px black solid;
     border-radius: 5px;
-    font-size: 50px;
+    font-size: 40px;
     text-decoration: none;
     padding: 20px;
     color: black;
+}
+
+#main-cat-picture {
+    height: 300px;
+    position: fixed;
+    bottom: 0;
+    right: 0;
 }

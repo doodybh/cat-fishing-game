@@ -1,15 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-   
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Tiny5&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tiny5&display=swap" rel="stylesheet">
 
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet">
 
 
     <link rel="stylesheet" href="./css/style.css">
@@ -18,18 +19,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fishing with Whisky</title>
 </head>
+
 <body>
     <div class="bg"></div>
     <h1 id="game-title" class="tiny5-regular">Fishing with Whisky</h1>
     <a class="start-buttons jersey-10-regular" href="./game.html">Play The Game</a>
     <a class="start-buttons jersey-10-regular" href="">Options</a>
-    <a class="start-buttons jersey-10-regular" href="">Info</a>
+    <a class="start-buttons jersey-10-regular" id="info-button">Info</a>
+
     <img id="main-cat-picture" src="./images/catwalking.png" alt="catimage">
-    <div id="info-modal">
-        <p>Info</p><br>
-        <p>More Info</p>
-        <p>More and more info</p>
-        <p>More and more info and more info</p>
+
+    <div id="overlay"></div>
+
+    <div id="info-modal" role="dialog" aria-modal="true" aria-labelledby="info-title">
+  <a id="close-button" aria-label="Close">×</a>
+
+  <h2 id="info-title">How to Play</h2>
+
+  <div class="info-grid">
+    <div class="info-block">
+      <h3>Points</h3>
+      <ul>
+        <li>Catch fish to earn points</li>
+        <li>The bigger the fish, the higher the points.</li>
+      </ul>
     </div>
+
+    <div class="info-block">
+      <h3>Avoid</h3>
+      <ul>
+        <li>The stinky boots remove a life</li>
+        <li>Oh and the trash too</li>
+      </ul>
+    </div>
+
+    <div class="info-block full">
+      <h3>Goal</h3>
+      <p>Score as high as you can before you run out of lives.</p>
+    </div>
+  </div>
+
+  <p class="tagline">Note from Whisky: catch the good fish… my family is counting on you.</p>
+</div>
+
+
+
+
 </body>
+
 </html>

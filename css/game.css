@@ -22,11 +22,11 @@
     right: 600px; 
 }
 
-.fishing-line{
+#fishing-line{
     position: fixed;
     top: 31vh;
     left: 98vh;
     width: 6px;
-    height: 300px;
+    height: 0;
     background-color: black;
 }

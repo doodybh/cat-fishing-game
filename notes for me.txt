@@ -1,0 +1,13 @@
+i need to make sure that zooming in in the page doesnt affect where the stuff addEventListener
+
+make sure to add a hook at the end of the line.
+
+if possible make the circle be overlapped on top of the line so fish can be seen pulled out visually from the hole.
+
+add lives.
+
+make fish swim all the way til they leave the screen.
+
+a lot of css should be worked on. (this is only a prototype to make sure functionality is there.)
+
+i need to make hitboxes for the fish (circle hitboxes at their mouths or near the front of their faces would probably sufficient.)

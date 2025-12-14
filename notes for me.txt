@@ -4,6 +4,8 @@ make sure to add a hook at the end of the line.
 
 if possible make the circle be overlapped on top of the line so fish can be seen pulled out visually from the hole.
 
+i can do this by maybe making a div which covers the area of the hole which doesnt show the line.
+
 add lives.
 
 make fish swim all the way til they leave the screen.

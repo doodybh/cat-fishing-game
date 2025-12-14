@@ -4,3 +4,29 @@
     box-sizing: border-box;
 }
 
+.game-bg{
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: url("../images/game-bg.png") no-repeat center center fixed;
+    background-size: cover;
+    z-index: -1;
+}
+
+#cat-fishing{
+    position: fixed;
+    width: 250px;
+    top: -10px;
+    right: 600px; 
+}
+
+.fishing-line{
+    position: fixed;
+    top: 31vh;
+    left: 98vh;
+    width: 6px;
+    height: 300px;
+    background-color: black;
+}

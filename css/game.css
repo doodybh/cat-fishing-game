@@ -1,32 +1,46 @@
-*{
-    padding: 0;
+* {
     margin: 0;
+    padding: 0;
     box-sizing: border-box;
 }
 
-.game-bg{
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    background: url("../images/game-bg.png") no-repeat center center fixed;
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: #111;
+}
+
+.game-wrapper {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    border: 6px solid black;
+    overflow: hidden;
+    background: black;
+}
+
+.game-bg {
+    position: absolute;
+    inset: 0;
+    background: url("../images/game-bg.png") no-repeat center;
     background-size: cover;
-    z-index: -1;
 }
 
-#cat-fishing{
-    position: fixed;
-    width: 250px;
-    top: -10px;
-    right: 600px; 
-}
-
-#fishing-line{
-    position: fixed;
-    top: 31vh;
-    left: 98vh;
+#fishing-line {
+    position: absolute;
+    top: 155px;
+    left: 585px;
     width: 6px;
     height: 0;
     background-color: black;
+}
+
+#line-mask {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: url("../images/linemask.png") no-repeat center;
+    background-size: cover;
 }

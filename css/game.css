@@ -44,3 +44,34 @@ body {
     background: url("../images/linemask.png") no-repeat center;
     background-size: cover;
 }
+
+#hook {
+    position: absolute;
+    bottom: -24px;
+    left: 55%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 24px;
+    background: url("../images/hook.png") no-repeat center;
+    background-size: contain;
+}
+
+.water-area {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 250px;
+    bottom: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.fish {
+    position: absolute;
+    width: 80px;
+    height: auto;
+    top: 0;
+    left: 0;
+    will-change: left;
+}

@@ -67,11 +67,22 @@ body {
     z-index: 2;
 }
 
-.fish {
-    position: absolute;
-    width: 80px;
-    height: auto;
-    top: 0;
-    left: 0;
-    will-change: left;
+.fish, .trash{
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  transform-origin: 50% 50%;
 }
+
+.fish.caught{
+  transform: rotate(-90deg);
+  animation: caughtWiggle 0.12s infinite linear;
+  filter: saturate(1.1);
+}
+
+@keyframes caughtWiggle{
+  0%   { transform: translateX(-1px) rotate(-93deg) scaleX(var(--dir, 1)); }
+  50%  { transform: translateX(1px) rotate(-87deg) scaleX(var(--dir, 1)); }
+  100% { transform: translateX(-1px) rotate(-93deg) scaleX(var(--dir, 1)); }
+}
+

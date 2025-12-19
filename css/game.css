@@ -86,3 +86,33 @@ body {
   100% { transform: translateX(-1px) rotate(-93deg) scaleX(var(--dir, 1)); }
 }
 
+#hud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 50;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  image-rendering: pixelated;
+  flex-direction: row-reverse;
+}
+
+#hearts {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.heart {
+  width: 60px;
+  image-rendering: pixelated;
+}
+
+#score-wrap {
+  font-size: 20px;
+  color: rgb(0, 0, 0);
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.6);
+}

@@ -28,6 +28,27 @@ let fishScored = false;
 
 const HOLE_Y = 230;
 
+let lives = 3;
+
+let invulnerableUntil = 0;
+const INVULN_MS = 900;
+
+const hazards = [
+    { src: '../images/boot.png', minScale: 0.55, maxScale: 0.95, weight: 60, hitR: 14, points: 0 },
+    { src: '../images/trash.gif', minScale: 0.60, maxScale: 1.05, weight: 40, hitR: 16, points: 0 }
+];
+
+function pickHazardByRarity() {
+    const totalWeight = hazards.reduce((sum, h) => sum + h.weight, 0);
+    let rand = Math.random() * totalWeight;
+    for (const h of hazards) {
+        rand -= h.weight;
+        if (rand <= 0) return h;
+    }
+    return hazards[0];
+}
+
+
 const fishImages = [
     { src: '../images/fish1.gif', minScale: 0.55, maxScale: 0.85, points: 10, weight: 40, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
     { src: '../images/fish2.gif', minScale: 0.70, maxScale: 1.05, points: 20, weight: 30, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
@@ -132,6 +153,166 @@ function updateCaughtFishPosition() {
     }
 }
 
+function damagePlayer() {
+    const now = Date.now();
+    if (now < invulnerableUntil) return;
+
+    invulnerableUntil = now + INVULN_MS;
+    lives = Math.max(0, lives - 1);
+
+    const livesEl = document.getElementById('lives');
+    if (livesEl) livesEl.textContent = lives;
+
+    if (lives === 0) {
+        if (caughtFish) {
+            caughtFish.remove();
+            caughtFish = null;
+        }
+    }
+}
+
+const _alphaCanvas = document.createElement('canvas');
+const _alphaCtx = _alphaCanvas.getContext('2d', { willReadFrequently: true });
+const ALPHA_THRESHOLD = 30;
+
+function pointHitsOpaquePixel(imgEl, clientX, clientY) {
+    if (!imgEl.isConnected) return false;
+
+    const rect = imgEl.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return false;
+
+    const nx = (clientX - rect.left) / rect.width;
+    const ny = (clientY - rect.top) / rect.height;
+
+    const w = imgEl.naturalWidth || 0;
+    const h = imgEl.naturalHeight || 0;
+    if (!w || !h) return false;
+
+    const px = Math.floor(nx * w);
+    const py = Math.floor(ny * h);
+
+    _alphaCanvas.width = w;
+    _alphaCanvas.height = h;
+    _alphaCtx.clearRect(0, 0, w, h);
+    _alphaCtx.drawImage(imgEl, 0, 0, w, h);
+
+    const data = _alphaCtx.getImageData(px, py, 1, 1).data;
+    return data[3] > ALPHA_THRESHOLD;
+}
+
+function hookHitsHazardAlpha(hazardEl, hookCircle) {
+    const rect = hazardEl.getBoundingClientRect();
+
+    const minX = rect.left - hookCircle.r;
+    const maxX = rect.right + hookCircle.r;
+    const minY = rect.top - hookCircle.r;
+    const maxY = rect.bottom + hookCircle.r;
+
+    if (hookCircle.x < minX || hookCircle.x > maxX || hookCircle.y < minY || hookCircle.y > maxY) return false;
+
+    const r = hookCircle.r;
+    const samples = [
+        { x: hookCircle.x, y: hookCircle.y },
+        { x: hookCircle.x + r, y: hookCircle.y },
+        { x: hookCircle.x - r, y: hookCircle.y },
+        { x: hookCircle.x, y: hookCircle.y + r },
+        { x: hookCircle.x, y: hookCircle.y - r },
+        { x: hookCircle.x + r * 0.7, y: hookCircle.y + r * 0.7 },
+        { x: hookCircle.x - r * 0.7, y: hookCircle.y + r * 0.7 },
+        { x: hookCircle.x + r * 0.7, y: hookCircle.y - r * 0.7 },
+        { x: hookCircle.x - r * 0.7, y: hookCircle.y - r * 0.7 }
+    ];
+
+    for (const p of samples) {
+        if (pointHitsOpaquePixel(hazardEl, p.x, p.y)) return true;
+    }
+    return false;
+}
+
+
+function spawnHazard() {
+    const hazardData = pickHazardByRarity();
+
+    const item = document.createElement('img');
+    item.classList.add('fish');
+    item.src = hazardData.src;
+
+    item.dataset.isHazard = '1';
+    item.dataset.hitR = hazardData.hitR;
+
+    const fromLeft = Math.random() < 0.5;
+    const scale = hazardData.minScale + Math.random() * (hazardData.maxScale - hazardData.minScale);
+
+    item.dataset.scale = scale;
+    item.dataset.fromLeft = fromLeft ? '1' : '0';
+
+    item.onload = () => {
+        const wrapW = waterAreaElement.clientWidth;
+        const wrapH = waterAreaElement.clientHeight;
+
+        const itemW = item.naturalWidth * scale;
+        const itemH = item.naturalHeight * scale;
+
+        item.style.width = itemW + 'px';
+        item.style.height = itemH + 'px';
+
+        const padding = 10;
+        let y = 0;
+        let ok = false;
+        let tries = 30;
+
+        while (!ok && tries-- > 0) {
+            y = padding + Math.random() * (wrapH - itemH - padding * 2);
+            ok = true;
+
+            const existing = waterAreaElement.querySelectorAll('.fish');
+            for (const other of existing) {
+                if (other === item) continue;
+                const otherTop = parseFloat(other.style.top) || 0;
+                const otherH = other.getBoundingClientRect().height;
+                if (Math.abs(y - otherTop) < Math.max(itemH, otherH) * 0.7) {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+
+        item.style.top = y + 'px';
+        item.style.left = fromLeft ? (-itemW - 20) + 'px' : (wrapW + 20) + 'px';
+        item.style.transform = fromLeft ? 'scaleX(1)' : 'scaleX(-1)';
+
+        waterAreaElement.appendChild(item);
+
+        const baseSpeed = 1 + Math.random() * 2.2;
+        const speed = baseSpeed / (0.7 + scale);
+
+        function moveItem() {
+            if (!item.isConnected) return;
+
+            const x = parseFloat(item.style.left) || 0;
+            const nextX = fromLeft ? x + speed : x - speed;
+            item.style.left = nextX + 'px';
+
+            const hookCircle = getHookCircle();
+
+            if (hookHitsHazardAlpha(item, hookCircle)) {
+                damagePlayer();
+                item.remove();
+                return;
+            }
+            
+            if (nextX > wrapW + itemW + 100 || nextX < -itemW - 100) {
+                item.remove();
+                return;
+            }
+
+            item._rafId = requestAnimationFrame(moveItem);
+        }
+
+        moveItem();
+    };
+}
+
 function spawnFish() {
     const fishData = pickFishByRarity();
 
@@ -225,5 +406,46 @@ document.addEventListener('mousemove', () => {
     updateCaughtFishPosition();
 });
 
+
+
+const HEART_FULL_SRC = '../images/heart-full.png';
+const HEART_EMPTY_SRC = '../images/heart-empty.png';
+
+function renderHearts() {
+    const heartsEl = document.getElementById('hearts');
+    if (!heartsEl) return;
+
+    heartsEl.innerHTML = '';
+    for (let i = 0; i < 3; i++) {
+        const img = document.createElement('img');
+        img.className = 'heart';
+        img.src = (i < lives) ? HEART_FULL_SRC : HEART_EMPTY_SRC;
+        img.alt = (i < lives) ? 'Full heart' : 'Empty heart';
+        heartsEl.appendChild(img);
+    }
+}
+
+renderHearts();
+
+function damagePlayer() {
+    const now = Date.now();
+    if (now < invulnerableUntil) return;
+
+    invulnerableUntil = now + INVULN_MS;
+    lives = Math.max(0, lives - 1);
+
+    renderHearts();
+
+    if (lives === 0) {
+        if (caughtFish) {
+            caughtFish.remove();
+            caughtFish = null;
+        }
+    }
+}
+
 spawnFish();
 setInterval(spawnFish, 4000);
+
+spawnHazard();
+setInterval(spawnHazard, 5500);

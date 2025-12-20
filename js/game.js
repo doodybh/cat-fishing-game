@@ -303,6 +303,18 @@ function getAudioSettings() {
 }
 
 let audioState = getAudioSettings();
+const btnUiMute = document.getElementById("btn-ui-mute");
+
+function updateMuteUI(isMuted) {
+    if (btnUiMute) btnUiMute.textContent = isMuted ? "🔇" : "🔊";
+
+    const menuMuteBtn = document.getElementById("btn-mute");
+    if (menuMuteBtn) {
+        menuMuteBtn.textContent = `Mute: ${isMuted ? 'On' : 'Off'}`;
+        menuMuteBtn.classList.toggle('is-muted', isMuted);
+    }
+}
+
 
 function updateSliderFill(slider) {
     const min = Number(slider.min || 0);
@@ -333,6 +345,7 @@ function renderAudioUIFromState() {
     if (btn) {
         btn.textContent = `Mute: ${audioState.muted ? 'On' : 'Off'}`;
         btn.classList.toggle('is-muted', audioState.muted);
+        updateMuteUI(audioState.muted);
     }
 
 }
@@ -378,19 +391,19 @@ bindWheelToRange('musicVol');
 bindWheelToRange('sfxVol');
 
 function markHot(el, on) {
-  if (!el) return;
-  el.classList.toggle('is-hot', on);
+    if (!el) return;
+    el.classList.toggle('is-hot', on);
 }
 
 ['musicVol', 'sfxVol'].forEach((id) => {
-  const el = document.getElementById(id);
-  if (!el) return;
+    const el = document.getElementById(id);
+    if (!el) return;
 
-  el.addEventListener('mouseenter', () => markHot(el, true));
-  el.addEventListener('mouseleave', () => markHot(el, false));
+    el.addEventListener('mouseenter', () => markHot(el, true));
+    el.addEventListener('mouseleave', () => markHot(el, false));
 
-  el.addEventListener('focus', () => markHot(el, true));
-  el.addEventListener('blur', () => markHot(el, false));
+    el.addEventListener('focus', () => markHot(el, true));
+    el.addEventListener('blur', () => markHot(el, false));
 });
 
 
@@ -885,6 +898,17 @@ function renderHearts() {
 
 renderHearts();
 
+
+document.getElementById('btn-ui-pause')?.addEventListener('click', () => {
+    if (paused) resumeGame();
+    else pauseGame();
+});
+
+document.getElementById('btn-ui-mute')?.addEventListener('click', () => {
+    document.getElementById('btn-mute')?.click();
+    updateMuteUI(audioState.muted);
+});
+
 window.addEventListener('blur', () => { if (!inCountdown) pauseGame(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && !inCountdown) pauseGame(); });
 
@@ -964,3 +988,42 @@ document.getElementById('btn-go-restart')?.addEventListener('click', () => {
 });
 
 startCountdown();
+renderAudioUIFromState();
+updateMuteUI(audioState.muted);
+
+function positionUIToScreenEdges() {
+    const pad = 18;
+
+    const mute = document.getElementById('btn-ui-mute');
+    const pause = document.getElementById('btn-ui-pause');
+    const hint = document.getElementById('hint-box');
+    const mascot = document.querySelector('.mascot');
+
+    if (mute) {
+        mute.style.left = pad + "px";
+        mute.style.top = pad + "px";
+    }
+
+    if (pause) {
+        const w = pause.offsetWidth || 44;
+        pause.style.left = (window.innerWidth - w - pad) + "px";
+        pause.style.top = pad + "px";
+    }
+
+    if (hint) {
+        const h = hint.offsetHeight || 70;
+        hint.style.left = pad + "px";
+        hint.style.top = (window.innerHeight - h - pad) + "px";
+    }
+
+    if (mascot) {
+        const w = mascot.offsetWidth || 120;
+        const h = mascot.offsetHeight || 120;
+        mascot.style.left = (window.innerWidth - w - pad) + "px";
+        mascot.style.top = (window.innerHeight - h - pad) + "px";
+    }
+}
+
+window.addEventListener("load", positionUIToScreenEdges);
+window.addEventListener("resize", positionUIToScreenEdges);
+setTimeout(positionUIToScreenEdges, 0);

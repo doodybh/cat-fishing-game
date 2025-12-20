@@ -38,15 +38,15 @@
         <h3>Points</h3>
         <ul>
           <li>Catch fish to earn points</li>
-          <li>The bigger the fish, the higher the points.</li>
+          <li>The more rare the fish, the more you gain points.</li>
         </ul>
       </div>
 
       <div class="info-block">
         <h3>Avoid</h3>
         <ul>
-          <li>The stinky boots (-1 life)</li>
-          <li>Any kinds of trash (-1 life)</li>
+          <li>Boots (-1 life)</li>
+          <li>Trash (-1 life)</li>
           <li>If it dont look edible dont catch it.</li>
         </ul>
       </div>
@@ -71,13 +71,21 @@
         <h3>Gameplay</h3>
 
         <label class="opt-label" for="opt-pace">Difficulty:</label>
-        <select id="opt-pace" class="opt-select">
-          <option value="easy">Chill (Easy)</option>
-          <option value="medium" selected>Normal (Medium)</option>
-          <option value="hard">Chaotic (Hard)</option>
-        </select>
+        <div class="custom-select jersey-10-regular" id="paceSelect">
+  <button class="select-btn" id="paceBtn" type="button">
+    <span class="select-text">Normal (Medium)</span>
+    <span class="select-arrow">▾</span>
+  </button>
 
-        <p class="opt-hint">Controls fish + hazard spawn speed.</p>
+  <div class="select-menu">
+    <div class="select-option selected" data-value="easy">Chill (Easy)</div>
+    <div class="select-option" data-value="medium">Normal (Medium)</div>
+    <div class="select-option" data-value="hard">Chaotic (Hard)</div>
+  </div>
+</div>
+
+
+        <p class="opt-hint">Controls fish and hazard spawn speed.</p>
       </div>
 
       <div class="info-block">

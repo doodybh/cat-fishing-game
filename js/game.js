@@ -10,9 +10,143 @@ const KEY_MUSIC_VOL = 'fw_music_vol';
 const KEY_SFX_VOL = 'fw_sfx_vol';
 const KEY_MUTED = 'fw_muted';
 const KEY_HIGHSCORE = 'fw_highscore';
+const KEY_MUSIC_ONLY_MUTED = 'fw_music_only_muted';
+
+if (localStorage.getItem(KEY_MUSIC_VOL) === null) localStorage.setItem(KEY_MUSIC_VOL, '0.7');
+if (localStorage.getItem(KEY_SFX_VOL) === null) localStorage.setItem(KEY_SFX_VOL, '0.8');
 
 let paused = false;
 let gameStarted = false;
+let isGameOver = false;
+let lastMpress = 0;
+
+let musicMutedOnly = (localStorage.getItem(KEY_MUSIC_ONLY_MUTED) || '0') === '1';
+
+const gameMusic = new Audio('../audio/game-music.mp3');
+gameMusic.loop = true;
+gameMusic.preload = 'auto';
+
+const sfxCatch = new Audio('../audio/catch.mp3');
+const sfxDamage = new Audio('../audio/damage.mp3');
+const sfxGameOver = new Audio('../audio/gameover.mp3');
+
+[sfxCatch, sfxDamage, sfxGameOver].forEach(a => { a.preload = 'auto'; });
+
+let _audioUnlocked = false;
+function unlockAudioOnce() {
+    if (_audioUnlocked) return;
+    _audioUnlocked = true;
+
+    try {
+        gameMusic.muted = false;
+        gameMusic.volume = 0;
+        gameMusic.currentTime = 0;
+
+        gameMusic.play().catch(() => { });
+    } catch (_) { }
+
+    [sfxCatch, sfxDamage, sfxGameOver].forEach(a => {
+        try {
+            a.muted = false;
+            a.volume = 0;
+            a.currentTime = 0;
+
+            const p = a.play();
+            if (p && typeof p.then === "function") {
+                p.then(() => {
+                    a.pause();
+                    a.currentTime = 0;
+                    a.volume = 1;
+                }).catch(() => {
+                    a.volume = 1;
+                });
+            } else {
+                a.pause();
+                a.currentTime = 0;
+                a.volume = 1;
+            }
+        } catch (_) { }
+    });
+
+    applyAudio(audioState);
+}
+
+document.addEventListener('pointerdown', unlockAudioOnce, { once: true });
+document.addEventListener('keydown', unlockAudioOnce, { once: true });
+
+const _fadeJobs = new Map();
+
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+function stopFade(audioEl) {
+    const id = _fadeJobs.get(audioEl);
+    if (id) cancelAnimationFrame(id);
+    _fadeJobs.delete(audioEl);
+}
+
+function fadeTo(audioEl, targetVol, durationMs = 250, opts = {}) {
+    if (!audioEl) return;
+
+    stopFade(audioEl);
+
+    const from = Number.isFinite(audioEl.volume) ? audioEl.volume : 0;
+    const to = clamp01(targetVol);
+    const start = performance.now();
+
+    const pauseAtEnd = !!opts.pauseAtEnd;
+    const stopAtEnd = !!opts.stopAtEnd;
+
+    const tick = (now) => {
+        const t = Math.min(1, (now - start) / Math.max(1, durationMs));
+        audioEl.volume = from + (to - from) * t;
+
+        if (t < 1) {
+            _fadeJobs.set(audioEl, requestAnimationFrame(tick));
+            return;
+        }
+
+        _fadeJobs.delete(audioEl);
+
+        if (pauseAtEnd) audioEl.pause();
+        if (stopAtEnd) { audioEl.pause(); audioEl.currentTime = 0; }
+    };
+
+    _fadeJobs.set(audioEl, requestAnimationFrame(tick));
+}
+
+function playSfx(audioEl, vol) {
+    if (!audioEl) return;
+    if (audioState.muted) return;
+    audioEl.currentTime = 0;
+    audioEl.volume = clamp01(vol);
+    audioEl.play().catch(() => { });
+}
+
+function applyAudio(state) {
+    if (gameMusic) {
+        stopFade(gameMusic);
+
+        const wantMusic = !state.muted && !musicMutedOnly && gameStarted && !paused;
+        const target = wantMusic ? clamp01(state.musicVol) : 0;
+
+        if (wantMusic) {
+            if (_audioUnlocked && gameMusic.paused) {
+                try { gameMusic.play().catch(() => { }); } catch (_) { }
+            }
+            fadeTo(gameMusic, target, 220);
+        } else {
+            if (!gameMusic.paused) fadeTo(gameMusic, 0, 160, { pauseAtEnd: true });
+            else gameMusic.volume = 0;
+        }
+    }
+
+    const sfxV = state.muted ? 0 : clamp01(state.sfxVol);
+    if (sfxCatch) sfxCatch.volume = sfxV;
+    if (sfxDamage) sfxDamage.volume = sfxV;
+    if (sfxGameOver) sfxGameOver.volume = sfxV;
+}
+
+
 
 document.addEventListener('mousemove', (mouseEvent) => {
     if (paused) return;
@@ -39,8 +173,6 @@ let lives = 3;
 
 let invulnerableUntil = 0;
 const INVULN_MS = 900;
-
-function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
 function getHighScoreRaw() {
     const v = parseInt(localStorage.getItem(KEY_HIGHSCORE) || '0', 10);
@@ -74,7 +206,20 @@ function hideGameOverOverlay() {
     o.setAttribute('aria-hidden', 'true');
 }
 
+function setPauseButtonDisabled(disabled) {
+    const btn = document.getElementById('btn-ui-pause');
+    if (!btn) return;
+    btn.disabled = !!disabled;
+    btn.classList.toggle('is-disabled', !!disabled);
+    btn.title = disabled ? 'Disabled' : 'Pause';
+}
+
 function gameOver() {
+    isGameOver = true;
+    setPauseButtonDisabled(true);
+    if (gameMusic) fadeTo(gameMusic, 0, 280, { stopAtEnd: true });
+    playSfx(sfxGameOver, audioState.muted ? 0 : audioState.sfxVol);
+
     stopSpawns();
     paused = true;
     gameStarted = false;
@@ -120,7 +265,7 @@ function getSpawnRates() {
 
     if (pace === 'easy') { fishMs = 4600; hazardMs = 7200; }
     if (pace === 'medium') { fishMs = 3400; hazardMs = 5200; }
-    if (pace === 'hard') { fishMs = 2800; hazardMs = 4200; }
+    if (pace === 'hard') { fishMs = 2800; hazardMs = 3200; }
 
     return { fishMs, hazardMs };
 }
@@ -160,7 +305,7 @@ function setStartText(txt) {
 
 function startCountdown() {
     stopSpawns();
-
+    setPauseButtonDisabled(true);
     gameStarted = false;
     paused = true;
     inCountdown = true;
@@ -180,8 +325,12 @@ function startCountdown() {
             inCountdown = false;
 
             paused = false;
+            setPauseButtonDisabled(false);
+
             gameWrapperElement.classList.remove('paused');
             gameStarted = true;
+
+            applyAudio(audioState);
 
             startSpawns();
             return;
@@ -256,6 +405,7 @@ function pauseGame() {
     stopSpawns();
     showPauseOverlay();
     showPausePanel();
+    if (gameMusic && !gameMusic.paused) fadeTo(gameMusic, 0, 220, { pauseAtEnd: true });
 }
 
 function resumeGame() {
@@ -265,6 +415,7 @@ function resumeGame() {
     gameWrapperElement.classList.remove('paused');
     hidePauseOverlay();
     if (gameStarted) startSpawns();
+    applyAudio(audioState);
 }
 
 function showPausePanel() {
@@ -303,18 +454,37 @@ function getAudioSettings() {
 }
 
 let audioState = getAudioSettings();
+
+musicMutedOnly = (localStorage.getItem(KEY_MUSIC_ONLY_MUTED) || '0') === '1';
+
+
 const btnUiMute = document.getElementById("btn-ui-mute");
 
-function updateMuteUI(isMuted) {
-    if (btnUiMute) btnUiMute.textContent = isMuted ? "🔇" : "🔊";
+function updateMuteUI() {
+    const btn = document.getElementById('btn-ui-mute');
+    if (btn) {
+        if (audioState.muted) btn.textContent = "🔇";
+        else if (musicMutedOnly) btn.textContent = "🎵❌";
+        else btn.textContent = "🔊";
+    }
 
     const menuMuteBtn = document.getElementById("btn-mute");
     if (menuMuteBtn) {
-        menuMuteBtn.textContent = `Mute: ${isMuted ? 'On' : 'Off'}`;
-        menuMuteBtn.classList.toggle('is-muted', isMuted);
+        if (audioState.muted) menuMuteBtn.textContent = "Mute: All";
+        else if (musicMutedOnly) menuMuteBtn.textContent = "Mute: Music";
+        else menuMuteBtn.textContent = "Mute: Off";
+
+        menuMuteBtn.classList.toggle('is-muted', audioState.muted || musicMutedOnly);
     }
 }
 
+window.addEventListener('focus', () => {
+    audioState = getAudioSettings();
+    musicMutedOnly = (localStorage.getItem(KEY_MUSIC_ONLY_MUTED) || '0') === '1';
+    updateMuteUI();
+    renderAudioUIFromState();
+    applyAudio(audioState);
+});
 
 function updateSliderFill(slider) {
     const min = Number(slider.min || 0);
@@ -343,10 +513,13 @@ function renderAudioUIFromState() {
 
     const btn = document.getElementById('btn-mute');
     if (btn) {
-        btn.textContent = `Mute: ${audioState.muted ? 'On' : 'Off'}`;
-        btn.classList.toggle('is-muted', audioState.muted);
-        updateMuteUI(audioState.muted);
+        if (audioState.muted) btn.textContent = "Mute: All";
+        else if (musicMutedOnly) btn.textContent = "Mute: Music";
+        else btn.textContent = "Mute: Off";
+
+        btn.classList.toggle('is-muted', audioState.muted || musicMutedOnly);
     }
+    updateMuteUI();
 
 }
 
@@ -406,7 +579,6 @@ function markHot(el, on) {
     el.addEventListener('blur', () => markHot(el, false));
 });
 
-
 document.getElementById('musicVol')?.addEventListener('input', (e) => {
     audioState.musicVol = clamp01(Number(e.target.value) / 100);
     updateSliderFill(e.target);
@@ -431,11 +603,25 @@ document.getElementById('sfxVol')?.addEventListener('change', (e) => {
     localStorage.setItem(KEY_SFX_VOL, String(clamp01(Number(e.target.value) / 100)));
 });
 
-document.getElementById('btn-mute')?.addEventListener('click', () => {
-    audioState.muted = !audioState.muted;
+document.getElementById('btn-ui-mute')?.addEventListener('click', () => {
+    stopFade(gameMusic);
+
+    if (!musicMutedOnly && !audioState.muted) {
+        musicMutedOnly = true;
+        audioState.muted = false;
+    } else if (musicMutedOnly && !audioState.muted) {
+        audioState.muted = true;
+        musicMutedOnly = false;
+    } else {
+        audioState.muted = false;
+        musicMutedOnly = false;
+    }
+
     localStorage.setItem(KEY_MUTED, audioState.muted ? '1' : '0');
-    renderAudioUIFromState();
-    applyAudioThrottled();
+    localStorage.setItem(KEY_MUSIC_ONLY_MUTED, musicMutedOnly ? '1' : '0');
+
+    updateMuteUI();
+    applyAudio(audioState);
 });
 
 document.getElementById('btn-sound')?.addEventListener('click', () => {
@@ -532,7 +718,7 @@ const fishImages = [
     { sheet: '../images/fish1-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 0.55, maxScale: 0.85, points: 10, weight: 40, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
     { sheet: '../images/fish2-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 0.70, maxScale: 1.05, points: 20, weight: 30, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
     { sheet: '../images/fish3-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 0.85, maxScale: 1.25, points: 35, weight: 18, mouthX: 0.87, mouthY: 0.56, mouthR: 12, hookOffX: -5 },
-    { sheet: '../images/fish4-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 1.00, maxScale: 1.45, points: 90, weight: 8, mouthX: 0.86, mouthY: 0.56, mouthR: 10 },
+    { sheet: '../images/fish4-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 1.00, maxScale: 1.45, points: 90, weight: 8, mouthX: 0.86, mouthY: 0.56, mouthR: 10, hookOffX: -9 },
     { sheet: '../images/fish5-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 1.10, maxScale: 1.60, points: 80, weight: 4, mouthX: 0.85, mouthY: 0.56, mouthR: 9, hookOffX: -18, hookOffY: -30 }
 ];
 
@@ -621,6 +807,8 @@ function updateCaughtFishPosition() {
         const pts = parseInt(caughtFish.dataset.points || "0", 10);
         score += pts;
 
+        playSfx(sfxCatch, audioState.muted ? 0 : audioState.sfxVol);
+
         const scoreEl = document.getElementById('score');
         if (scoreEl) scoreEl.textContent = formatScore(score);
 
@@ -655,16 +843,23 @@ function damagePlayer() {
     if (now < invulnerableUntil) return;
 
     invulnerableUntil = now + INVULN_MS;
-    lives = Math.max(0, lives - 1);
+
+    if (lives === 1) {
+        lives = 0;
+        renderHearts();
+        gameOver();
+        return;
+    }
+
+    lives--;
+
+    playSfx(sfxDamage, audioState.muted ? 0 : audioState.sfxVol);
 
     if (!paused) playDamageFX();
 
     renderHearts();
-
-    if (lives === 0) {
-        gameOver();
-    }
 }
+
 
 function spawnHazard() {
     const hazardData = pickHazardByRarity();
@@ -898,22 +1093,37 @@ function renderHearts() {
 
 renderHearts();
 
-
 document.getElementById('btn-ui-pause')?.addEventListener('click', () => {
+    if (isGameOver) return;
     if (paused) resumeGame();
     else pauseGame();
 });
 
-document.getElementById('btn-ui-mute')?.addEventListener('click', () => {
-    document.getElementById('btn-mute')?.click();
-    updateMuteUI(audioState.muted);
-});
+
 
 window.addEventListener('blur', () => { if (!inCountdown) pauseGame(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && !inCountdown) pauseGame(); });
 
 document.addEventListener('keydown', (e) => {
-    if (inCountdown) return;
+    const k = e.key.toLowerCase();
+
+    if (k === 'm') {
+        e.preventDefault();
+        document.getElementById('btn-ui-mute')?.click();
+        return;
+    }
+
+    if (k === 'r') {
+        e.preventDefault();
+        if (isGameOver) {
+            document.getElementById('btn-go-restart')?.click();
+        } else if (!inCountdown) {
+            document.getElementById('btn-restart')?.click();
+        }
+        return;
+    }
+
+    if (inCountdown || isGameOver) return;
 
     if (e.key === 'Escape') {
         if (paused) {
@@ -925,14 +1135,6 @@ document.addEventListener('keydown', (e) => {
     }
 
     if (paused && isAudioOpen()) {
-        const key = e.key.toLowerCase();
-
-        if (key === 'm') {
-            e.preventDefault();
-            document.getElementById('btn-mute')?.click();
-            return;
-        }
-
         const active = document.activeElement;
         const hovered = document.querySelector('#audio-panel input[type="range"].is-hot');
         const target = (active && active.tagName === 'INPUT' && active.type === 'range')
@@ -948,8 +1150,10 @@ document.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeRange(target.id, -big); }
         if (e.key === 'ArrowRight') { e.preventDefault(); nudgeRange(target.id, +big); }
     }
-
 });
+
+
+
 
 document.getElementById('btn-resume')?.addEventListener('click', () => resumeGame());
 
@@ -983,13 +1187,15 @@ document.getElementById('btn-go-menu')?.addEventListener('click', () => {
 });
 
 document.getElementById('btn-go-restart')?.addEventListener('click', () => {
+    isGameOver = false;
+    setPauseButtonDisabled(false);
     hideGameOverOverlay();
     document.getElementById('btn-restart')?.click();
 });
 
 startCountdown();
 renderAudioUIFromState();
-updateMuteUI(audioState.muted);
+updateMuteUI();
 
 function positionUIToScreenEdges() {
     const pad = 18;

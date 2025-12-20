@@ -13,6 +13,9 @@ const KEY_PACE = 'fw_pace';
 const KEY_MUSIC_VOL = 'fw_music_vol';
 const KEY_SFX_VOL = 'fw_sfx_vol';
 const KEY_MUTED = 'fw_muted';
+const KEY_MUSIC_ONLY_MUTED = 'fw_music_only_muted';
+
+let musicMutedOnly = (localStorage.getItem(KEY_MUSIC_ONLY_MUTED) || '0') === '1';
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
@@ -79,10 +82,13 @@ function renderAudioUIFromState() {
 
   const btn = document.getElementById('btn-mute');
   if (btn) {
-    btn.textContent = `Mute: ${audioState.muted ? 'On' : 'Off'}`;
-    btn.classList.toggle('is-muted', audioState.muted);
+    if (audioState.muted) btn.textContent = 'Mute: All';
+    else if (musicMutedOnly) btn.textContent = 'Mute: Music';
+    else btn.textContent = 'Mute: Off';
+    btn.classList.toggle('is-muted', audioState.muted || musicMutedOnly);
   }
 }
+
 
 let _applyRAF = null;
 function applyAudioThrottled() {
@@ -137,8 +143,6 @@ function markHot(el, on) {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (!isOptionsOpen()) return;
-
   const key = e.key.toLowerCase();
 
   if (key === 'm') {
@@ -147,19 +151,21 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  if (!isOptionsOpen()) return;
+
   const active = document.activeElement;
   const hovered = document.querySelector('#options-modal input[type="range"].is-hot');
 
   const target =
     (active && active.tagName === 'INPUT' && active.type === 'range') ? active :
-    hovered ? hovered :
-    document.getElementById('musicVol');
+      hovered ? hovered :
+        document.getElementById('musicVol');
 
   if (!target) return;
 
   const big = e.shiftKey ? 5 : 1;
 
-  if (e.key === 'ArrowLeft')  { e.preventDefault(); nudgeRange(target.id, -big); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeRange(target.id, -big); }
   if (e.key === 'ArrowRight') { e.preventDefault(); nudgeRange(target.id, +big); }
 });
 
@@ -229,20 +235,123 @@ document.getElementById('sfxVol')?.addEventListener('change', (e) => {
 });
 
 document.getElementById('btn-mute')?.addEventListener('click', () => {
-  audioState.muted = !audioState.muted;
+  if (!musicMutedOnly && !audioState.muted) {
+    musicMutedOnly = true;
+    audioState.muted = false;
+  } else if (musicMutedOnly && !audioState.muted) {
+    audioState.muted = true;
+    musicMutedOnly = false;
+  } else {
+    audioState.muted = false;
+    musicMutedOnly = false;
+  }
+
   localStorage.setItem(KEY_MUTED, audioState.muted ? '1' : '0');
+  localStorage.setItem(KEY_MUSIC_ONLY_MUTED, musicMutedOnly ? '1' : '0');
+
   renderAudioUIFromState();
-  applyAudioThrottled();
+  applyAudio(audioState);
 });
+
+const menuMusic = new Audio('../audio/menu-music.mp3');
+menuMusic.loop = true;
+menuMusic.volume = 0;
+
+function applyAudio(state) {
+  const wantMusic = !state.muted && !musicMutedOnly;
+  const vol = wantMusic ? clamp01(state.musicVol) : 0;
+
+  menuMusic.volume = vol;
+
+  if (wantMusic) {
+    if (menuMusic.paused) menuMusic.play().catch(() => { });
+  } else {
+    if (!menuMusic.paused) {
+      menuMusic.pause();
+    }
+  }
+}
+
+
+function unlockMenuAudioOnce() {
+  applyAudio(getAudioSettings());
+  document.removeEventListener('pointerdown', unlockMenuAudioOnce);
+  document.removeEventListener('keydown', unlockMenuAudioOnce);
+}
+
+document.addEventListener('pointerdown', unlockMenuAudioOnce, { once: true });
+document.addEventListener('keydown', unlockMenuAudioOnce, { once: true });
+
+document.addEventListener('click', () => {
+  const state = getAudioSettings();
+  applyAudio(state);
+}, { once: true });
+
+let paceSelect = null;
+let paceBtn = null;
+let paceText = null;
+let paceOptions = [];
+let paceMenu = null;
+
+function syncPaceDropdownFromStorage() {
+  if (!paceSelect || !paceText || !paceOptions.length) return;
+  const pace = getPace();
+  const match = paceOptions.find(o => o.dataset.value === pace) || paceOptions[1] || paceOptions[0];
+  if (!match) return;
+  paceText.textContent = match.textContent;
+  paceOptions.forEach(o => o.classList.remove("selected"));
+  match.classList.add("selected");
+}
+
+function initPaceDropdown() {
+  paceSelect = document.getElementById("paceSelect");
+  if (!paceSelect) return;
+
+  paceBtn = paceSelect.querySelector(".select-btn");
+  paceText = paceSelect.querySelector(".select-text");
+  paceMenu = paceSelect.querySelector(".select-menu");
+  paceOptions = Array.from(paceSelect.querySelectorAll(".select-option"));
+
+  if (!paceBtn || !paceText || !paceMenu || !paceOptions.length) return;
+
+  syncPaceDropdownFromStorage();
+
+  paceBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = paceSelect.classList.toggle("open");
+    paceMenu.style.display = isOpen ? "block" : "none";
+  });
+
+  paceOptions.forEach(opt => {
+    opt.addEventListener("click", (e) => {
+      e.stopPropagation();
+      paceText.textContent = opt.textContent;
+      paceOptions.forEach(o => o.classList.remove("selected"));
+      opt.classList.add("selected");
+      localStorage.setItem(KEY_PACE, opt.dataset.value);
+      paceSelect.classList.remove("open");
+      paceMenu.style.display = "none";
+    });
+  });
+
+  document.addEventListener("click", () => {
+    if (!paceSelect) return;
+    paceSelect.classList.remove("open");
+    paceMenu.style.display = "none";
+  });
+}
 
 renderHighScore();
 renderPaceUI();
 audioState = getAudioSettings();
 renderAudioUIFromState();
+initPaceDropdown();
 
 window.addEventListener('focus', () => {
   renderHighScore();
   renderPaceUI();
+  syncPaceDropdownFromStorage();
   audioState = getAudioSettings();
+  musicMutedOnly = (localStorage.getItem(KEY_MUSIC_ONLY_MUTED) || '0') === '1';
   renderAudioUIFromState();
 });

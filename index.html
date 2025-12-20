@@ -2,69 +2,122 @@
 <html lang="en">
 
 <head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tiny5&display=swap" rel="stylesheet">
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Tiny5&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet">
 
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet">
-
-
-    <link rel="stylesheet" href="./css/style.css">
-    <script defer src="./js/script.js"></script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fishing with Whisky</title>
+  <link rel="stylesheet" href="./css/style.css">
+  <script defer src="./js/script.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fishing with Whisky</title>
 </head>
 
 <body>
-    <div class="bg"></div>
-    <h1 id="game-title" class="tiny5-regular">Fishing with Whisky</h1>
-    <a class="start-buttons jersey-10-regular" href="./game.html">Play The Game</a>
-    <a class="start-buttons jersey-10-regular" href="">Options</a>
-    <a class="start-buttons jersey-10-regular" id="info-button">Info</a>
+  <div class="bg"></div>
+  <h1 id="game-title" class="tiny5-regular">Fishing with Whisky</h1>
+  <a class="start-buttons jersey-10-regular" href="./game.html">Play The Game</a>
+  <a class="start-buttons jersey-10-regular" id="options-button">Options</a>
+  <a class="start-buttons jersey-10-regular" id="info-button">Info</a>
 
-    <img id="main-cat-picture" src="./images/catwalking.png" alt="catimage">
+  <img id="main-cat-picture" src="./images/catwalking.png" alt="catimage">
 
-    <div id="overlay"></div>
+  <div id="overlay"></div>
 
-    <div id="info-modal" role="dialog" aria-modal="true" aria-labelledby="info-title">
-  <a id="close-button" aria-label="Close">×</a>
+  <div id="info-modal" role="dialog" aria-modal="true" aria-labelledby="info-title">
+    <a id="close-button" aria-label="Close">×</a>
 
-  <h2 id="info-title">How to Play</h2>
+    <h2 id="info-title">How to Play</h2>
 
-  <div class="info-grid">
-    <div class="info-block">
-      <h3>Points</h3>
-      <ul>
-        <li>Catch fish to earn points</li>
-        <li>The bigger the fish, the higher the points.</li>
-      </ul>
+    <div class="info-grid">
+      <div class="info-block">
+        <h3>Points</h3>
+        <ul>
+          <li>Catch fish to earn points</li>
+          <li>The bigger the fish, the higher the points.</li>
+        </ul>
+      </div>
+
+      <div class="info-block">
+        <h3>Avoid</h3>
+        <ul>
+          <li>The stinky boots (-1 life)</li>
+          <li>Any kinds of trash (-1 life)</li>
+          <li>If it dont look edible dont catch it.</li>
+        </ul>
+      </div>
+
+      <div class="info-block full">
+        <h3>Goal</h3>
+        <p>Score as high as you can before you run out of lives.</p>
+      </div>
     </div>
 
-    <div class="info-block">
-      <h3>Avoid</h3>
-      <ul>
-        <li>The stinky boots (-1 life)</li>
-        <li>Any kinds of trash (-1 life)</li>
-        <li>If it dont look edible dont catch it.</li>
-      </ul>
-    </div>
-
-    <div class="info-block full">
-      <h3>Goal</h3>
-      <p>Score as high as you can before you run out of lives.</p>
-    </div>
+    <p class="tagline">Note from Whisky: catch the good fish… my family is counting on you.</p>
   </div>
 
-  <p class="tagline">Note from Whisky: catch the good fish… my family is counting on you.</p>
-</div>
+  <div id="options-modal" role="dialog" aria-modal="true" aria-labelledby="options-title">
+    <a id="options-close" aria-label="Close">×</a>
 
+    <h2 id="options-title">Options</h2>
 
+    <div class="info-grid">
 
+      <div class="info-block">
+        <h3>Gameplay</h3>
+
+        <label class="opt-label" for="opt-pace">Difficulty:</label>
+        <select id="opt-pace" class="opt-select">
+          <option value="easy">Chill (Easy)</option>
+          <option value="medium" selected>Normal (Medium)</option>
+          <option value="hard">Chaotic (Hard)</option>
+        </select>
+
+        <p class="opt-hint">Controls fish + hazard spawn speed.</p>
+      </div>
+
+      <div class="info-block">
+        <h3>Audio</h3>
+
+        <div class="opt-row">
+          <label class="opt-label" for="musicVol">Music</label>
+          <input id="musicVol" type="range" min="0" max="100" value="70" step="1">
+          <span class="opt-val" id="musicVolVal">70%</span>
+        </div>
+
+        <div class="opt-row">
+          <label class="opt-label" for="sfxVol">SFX</label>
+          <input id="sfxVol" type="range" min="0" max="100" value="80" step="1">
+          <span class="opt-val" id="sfxVolVal">80%</span>
+        </div>
+
+        <button id="btn-mute" class="opt-btn" type="button">Mute: Off</button>
+      </div>
+
+      <div class="info-block full">
+        <h3>Stats</h3>
+
+        <div class="stats-row">
+          <span>High Score</span>
+          <strong id="highscore-text">0</strong>
+        </div>
+
+        <p class="opt-hint">High score is saved on this device.</p>
+      </div>
+
+      <div class="info-block full note">
+        <h3>Note</h3>
+        <p>Settings save automatically. Pace applies on next start/restart.</p>
+      </div>
+
+    </div>
+
+    <p class="tagline">Settings are saved automatically.</p>
+  </div>
 
 </body>
 

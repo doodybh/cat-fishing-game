@@ -5,15 +5,23 @@ const lineMaskElement = document.getElementById('line-mask');
 const LINE_TOP_OFFSET = 155;
 const HOOK_HEIGHT = 40;
 
+const KEY_PACE = 'fw_pace';
+const KEY_MUSIC_VOL = 'fw_music_vol';
+const KEY_SFX_VOL = 'fw_sfx_vol';
+const KEY_MUTED = 'fw_muted';
+const KEY_HIGHSCORE = 'fw_highscore';
+
+let paused = false;
+let gameStarted = false;
+
 document.addEventListener('mousemove', (mouseEvent) => {
+    if (paused) return;
+
     const wrapperRect = gameWrapperElement.getBoundingClientRect();
-
     let lineHeight = mouseEvent.clientY - wrapperRect.top - LINE_TOP_OFFSET;
-
     if (lineHeight < 0) lineHeight = 0;
 
     const maxHeight = gameWrapperElement.clientHeight - LINE_TOP_OFFSET - HOOK_HEIGHT;
-
     if (lineHeight > maxHeight) lineHeight = maxHeight;
 
     fishingLineElement.style.height = lineHeight + 'px';
@@ -27,15 +35,474 @@ let score = 0;
 let fishScored = false;
 
 const HOLE_Y = 230;
-
 let lives = 3;
 
 let invulnerableUntil = 0;
 const INVULN_MS = 900;
 
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+function getHighScoreRaw() {
+    const v = parseInt(localStorage.getItem(KEY_HIGHSCORE) || '0', 10);
+    return Number.isFinite(v) ? v : 0;
+}
+
+function setHighScoreRaw(v) {
+    localStorage.setItem(KEY_HIGHSCORE, String(Math.max(0, Math.floor(v))));
+}
+
+function showGameOverOverlay(finalScoreRaw, bestScoreRaw, isNewBest) {
+    const o = document.getElementById('gameover-overlay');
+    if (!o) return;
+
+    const sEl = document.getElementById('go-score');
+    const bEl = document.getElementById('go-best');
+    const badge = document.getElementById('go-badge');
+
+    if (sEl) sEl.textContent = String(finalScoreRaw);
+    if (bEl) bEl.textContent = String(bestScoreRaw);
+    if (badge) badge.style.display = isNewBest ? 'block' : 'none';
+
+    o.classList.add('show');
+    o.setAttribute('aria-hidden', 'false');
+}
+
+function hideGameOverOverlay() {
+    const o = document.getElementById('gameover-overlay');
+    if (!o) return;
+    o.classList.remove('show');
+    o.setAttribute('aria-hidden', 'true');
+}
+
+function gameOver() {
+    stopSpawns();
+    paused = true;
+    gameStarted = false;
+    inCountdown = false;
+
+    if (caughtFish) {
+        caughtFish.remove();
+        caughtFish = null;
+    }
+
+    const prevBest = getHighScoreRaw();
+    const isNewBest = score > prevBest;
+    const best = isNewBest ? score : prevBest;
+    if (isNewBest) setHighScoreRaw(best);
+
+    showGameOverOverlay(score, best, isNewBest);
+}
+
+let fishSpawnTimer = null;
+let hazardSpawnTimer = null;
+
+const _sheetSizeCache = new Map();
+
+function loadSheetSize(url) {
+    if (_sheetSizeCache.has(url)) return _sheetSizeCache.get(url);
+
+    const p = new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = reject;
+        img.src = url;
+    });
+
+    _sheetSizeCache.set(url, p);
+    return p;
+}
+
+function getSpawnRates() {
+    const pace = localStorage.getItem(KEY_PACE) || 'medium';
+
+    let fishMs = 4000;
+    let hazardMs = 5500;
+
+    if (pace === 'easy') { fishMs = 4600; hazardMs = 7200; }
+    if (pace === 'medium') { fishMs = 3400; hazardMs = 5200; }
+    if (pace === 'hard') { fishMs = 2800; hazardMs = 4200; }
+
+    return { fishMs, hazardMs };
+}
+
+function formatScore(n) {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return n.toString();
+}
+
+function resetLineAndHook() {
+    fishingLineElement.style.height = '0px';
+    hookElement.style.bottom = '-24px';
+}
+
+let inCountdown = true;
+
+function showStartOverlay() {
+    const o = document.getElementById('start-overlay');
+    if (!o) return;
+    o.classList.add('show');
+    o.setAttribute('aria-hidden', 'false');
+}
+
+function hideStartOverlay() {
+    const o = document.getElementById('start-overlay');
+    if (!o) return;
+    o.classList.remove('show');
+    o.setAttribute('aria-hidden', 'true');
+}
+
+function setStartText(txt) {
+    const el = document.getElementById('start-count');
+    if (!el) return;
+    el.textContent = txt;
+}
+
+function startCountdown() {
+    stopSpawns();
+
+    gameStarted = false;
+    paused = true;
+    inCountdown = true;
+    gameWrapperElement.classList.add('paused');
+
+    showStartOverlay();
+
+    const seq = ["3", "2", "1", "Fish!!"];
+    let i = 0;
+
+    setStartText(seq[i]);
+
+    const tick = () => {
+        i++;
+        if (i >= seq.length) {
+            hideStartOverlay();
+            inCountdown = false;
+
+            paused = false;
+            gameWrapperElement.classList.remove('paused');
+            gameStarted = true;
+
+            startSpawns();
+            return;
+        }
+
+        setStartText(seq[i]);
+        setTimeout(tick, (seq[i] === "Fish!!") ? 650 : 800);
+    };
+
+    setTimeout(tick, 800);
+}
+
+function stopSpawns() {
+    clearTimeout(fishSpawnTimer);
+    clearTimeout(hazardSpawnTimer);
+    fishSpawnTimer = null;
+    hazardSpawnTimer = null;
+}
+
+function scheduleFishSpawn() {
+    if (paused) return;
+    const { fishMs } = getSpawnRates();
+    fishSpawnTimer = setTimeout(() => {
+        if (!paused) spawnFish();
+        scheduleFishSpawn();
+    }, fishMs);
+}
+
+function scheduleHazardSpawn() {
+    if (paused) return;
+    const { hazardMs } = getSpawnRates();
+    hazardSpawnTimer = setTimeout(() => {
+        if (!paused) spawnHazard();
+        scheduleHazardSpawn();
+    }, hazardMs);
+}
+
+function startSpawns() {
+    stopSpawns();
+    scheduleFishSpawn();
+    scheduleHazardSpawn();
+}
+
+function showPauseOverlay() {
+    document.getElementById('pause-overlay')?.classList.add('show');
+}
+
+function hidePauseOverlay() {
+    document.getElementById('pause-overlay')?.classList.remove('show');
+}
+
+function playDamageFX() {
+    gameWrapperElement.classList.add('damage');
+    clearTimeout(gameWrapperElement._damageTO);
+    gameWrapperElement._damageTO = setTimeout(() => {
+        gameWrapperElement.classList.remove('damage');
+    }, 160);
+
+    gameWrapperElement.classList.remove('shake');
+    void gameWrapperElement.offsetWidth;
+    gameWrapperElement.classList.add('shake');
+    clearTimeout(gameWrapperElement._shakeTO);
+    gameWrapperElement._shakeTO = setTimeout(() => {
+        gameWrapperElement.classList.remove('shake');
+    }, 300);
+}
+
+function pauseGame() {
+    if (paused) return;
+    paused = true;
+    gameWrapperElement.classList.add('paused');
+    stopSpawns();
+    showPauseOverlay();
+    showPausePanel();
+}
+
+function resumeGame() {
+    if (!paused) return;
+    if (isAudioOpen()) return;
+    paused = false;
+    gameWrapperElement.classList.remove('paused');
+    hidePauseOverlay();
+    if (gameStarted) startSpawns();
+}
+
+function showPausePanel() {
+    const p = document.getElementById('pause-panel');
+    const a = document.getElementById('audio-panel');
+    if (p) p.style.display = 'block';
+    if (a) a.style.display = 'none';
+}
+
+function showAudioPanel() {
+    const p = document.getElementById('pause-panel');
+    const a = document.getElementById('audio-panel');
+    if (p) p.style.display = 'none';
+    if (a) a.style.display = 'block';
+
+    audioState = getAudioSettings();
+    renderAudioUIFromState();
+    setTimeout(() => document.getElementById('musicVol')?.focus(), 0);
+}
+
+function isAudioOpen() {
+    const a = document.getElementById('audio-panel');
+    return a && a.style.display !== 'none';
+}
+
+function closeAudioPanel() {
+    showPausePanel();
+}
+
+function getAudioSettings() {
+    return {
+        musicVol: clamp01(parseFloat(localStorage.getItem(KEY_MUSIC_VOL) || '0.7')),
+        sfxVol: clamp01(parseFloat(localStorage.getItem(KEY_SFX_VOL) || '0.8')),
+        muted: (localStorage.getItem(KEY_MUTED) || '0') === '1'
+    };
+}
+
+let audioState = getAudioSettings();
+
+function updateSliderFill(slider) {
+    const min = Number(slider.min || 0);
+    const max = Number(slider.max || 100);
+    const val = Number(slider.value || 0);
+    const pct = ((val - min) / (max - min)) * 100;
+    slider.style.setProperty('--fill', `${pct}%`);
+}
+
+function renderAudioUIFromState() {
+    const music = document.getElementById('musicVol');
+    const musicVal = document.getElementById('musicVolVal');
+    if (music) {
+        music.value = String(Math.round(audioState.musicVol * 100));
+        updateSliderFill(music);
+    }
+    if (musicVal) musicVal.textContent = `${Math.round(audioState.musicVol * 100)}%`;
+
+    const sfx = document.getElementById('sfxVol');
+    const sfxVal = document.getElementById('sfxVolVal');
+    if (sfx) {
+        sfx.value = String(Math.round(audioState.sfxVol * 100));
+        updateSliderFill(sfx);
+    }
+    if (sfxVal) sfxVal.textContent = `${Math.round(audioState.sfxVol * 100)}%`;
+
+    const btn = document.getElementById('btn-mute');
+    if (btn) {
+        btn.textContent = `Mute: ${audioState.muted ? 'On' : 'Off'}`;
+        btn.classList.toggle('is-muted', audioState.muted);
+    }
+
+}
+
+let _applyRAF = null;
+function applyAudioThrottled() {
+    if (_applyRAF) return;
+    _applyRAF = requestAnimationFrame(() => {
+        _applyRAF = null;
+        applyAudio?.(audioState);
+    });
+}
+
+function nudgeRange(id, amount) {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const min = Number(el.min || 0);
+    const max = Number(el.max || 100);
+    const step = Number(el.step || 1);
+
+    const next = Math.max(min, Math.min(max, Number(el.value) + amount * step));
+    el.value = String(next);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function bindWheelToRange(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    el.addEventListener('wheel', (e) => {
+        if (!paused || !isAudioOpen()) return;
+        e.preventDefault();
+
+        const step = e.shiftKey ? 5 : 1;
+        const dir = (e.deltaY > 0) ? -step : step;
+        nudgeRange(id, dir);
+    }, { passive: false });
+}
+
+bindWheelToRange('musicVol');
+bindWheelToRange('sfxVol');
+
+function markHot(el, on) {
+  if (!el) return;
+  el.classList.toggle('is-hot', on);
+}
+
+['musicVol', 'sfxVol'].forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  el.addEventListener('mouseenter', () => markHot(el, true));
+  el.addEventListener('mouseleave', () => markHot(el, false));
+
+  el.addEventListener('focus', () => markHot(el, true));
+  el.addEventListener('blur', () => markHot(el, false));
+});
+
+
+document.getElementById('musicVol')?.addEventListener('input', (e) => {
+    audioState.musicVol = clamp01(Number(e.target.value) / 100);
+    updateSliderFill(e.target);
+    const v = document.getElementById('musicVolVal');
+    if (v) v.textContent = `${Math.round(audioState.musicVol * 100)}%`;
+    applyAudioThrottled();
+});
+
+document.getElementById('musicVol')?.addEventListener('change', (e) => {
+    localStorage.setItem(KEY_MUSIC_VOL, String(clamp01(Number(e.target.value) / 100)));
+});
+
+document.getElementById('sfxVol')?.addEventListener('input', (e) => {
+    audioState.sfxVol = clamp01(Number(e.target.value) / 100);
+    updateSliderFill(e.target);
+    const v = document.getElementById('sfxVolVal');
+    if (v) v.textContent = `${Math.round(audioState.sfxVol * 100)}%`;
+    applyAudioThrottled();
+});
+
+document.getElementById('sfxVol')?.addEventListener('change', (e) => {
+    localStorage.setItem(KEY_SFX_VOL, String(clamp01(Number(e.target.value) / 100)));
+});
+
+document.getElementById('btn-mute')?.addEventListener('click', () => {
+    audioState.muted = !audioState.muted;
+    localStorage.setItem(KEY_MUTED, audioState.muted ? '1' : '0');
+    renderAudioUIFromState();
+    applyAudioThrottled();
+});
+
+document.getElementById('btn-sound')?.addEventListener('click', () => {
+    showAudioPanel();
+});
+
+document.getElementById('btn-audio-back')?.addEventListener('click', () => {
+    closeAudioPanel();
+});
+
+function initSpriteDiv(el, sheetUrl, sheetW, sheetH, cols, rows, fps, scale) {
+    const frameW = sheetW / cols;
+    const frameH = sheetH / rows;
+
+    el.style.width = (frameW * scale) + 'px';
+    el.style.height = (frameH * scale) + 'px';
+
+    el.style.backgroundImage = `url("${sheetUrl}")`;
+    el.style.backgroundRepeat = 'no-repeat';
+    el.style.backgroundSize = (sheetW * scale) + 'px ' + (sheetH * scale) + 'px';
+    el.style.backgroundPosition = '0px 0px';
+
+    el._sprite = {
+        sheetW,
+        sheetH,
+        cols,
+        rows,
+        fps,
+        scale,
+        frameW,
+        frameH,
+        frame: 0,
+        accMs: 0
+    };
+}
+
+function stepSprite(el, dtMs, totalFrames, frameMap) {
+    if (!el._sprite) return;
+
+    const s = el._sprite;
+    s.accMs += dtMs;
+
+    const frameMs = 1000 / (s.fps || 10);
+    while (s.accMs >= frameMs) {
+        s.accMs -= frameMs;
+        s.frame = (s.frame + 1) % totalFrames;
+    }
+
+    let col = s.frame % s.cols;
+    let row = Math.floor(s.frame / s.cols);
+
+    if (Array.isArray(frameMap) && frameMap[s.frame]) {
+        col = frameMap[s.frame].c;
+        row = frameMap[s.frame].r;
+    }
+
+    const x = -(col * s.frameW * s.scale);
+    const y = -(row * s.frameH * s.scale);
+
+    el.style.backgroundPosition = `${x}px ${y}px`;
+}
+
 const hazards = [
-    { src: '../images/boot.png', minScale: 0.55, maxScale: 0.95, weight: 60, hitR: 14, points: 0 },
-    { src: '../images/trash.gif', minScale: 0.60, maxScale: 1.05, weight: 40, hitR: 16, points: 0 }
+    { type: 'img', src: '../images/boot.png', minScale: 0.55, maxScale: 0.95, weight: 60, hitR: 14 },
+    {
+        type: 'sprite',
+        sheet: '../images/trash-sheet.png',
+        frames: 8,
+        cols: 5,
+        rows: 2,
+        fps: 10,
+        minScale: 0.60,
+        maxScale: 1.05,
+        weight: 40,
+        hitR: 16,
+        frameMap: [
+            { c: 0, r: 0 }, { c: 1, r: 0 }, { c: 2, r: 0 }, { c: 3, r: 0 }, { c: 4, r: 0 },
+            { c: 0, r: 1 }, { c: 1, r: 1 }, { c: 2, r: 1 }
+        ]
+    }
 ];
 
 function pickHazardByRarity() {
@@ -48,16 +515,13 @@ function pickHazardByRarity() {
     return hazards[0];
 }
 
-
 const fishImages = [
-    { src: '../images/fish1.gif', minScale: 0.55, maxScale: 0.85, points: 10, weight: 40, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
-    { src: '../images/fish2.gif', minScale: 0.70, maxScale: 1.05, points: 20, weight: 30, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
-    { src: '../images/fish3.gif', minScale: 0.85, maxScale: 1.25, points: 35, weight: 18, mouthX: 0.87, mouthY: 0.56, mouthR: 12, hookOffX: -5 },
-    { src: '../images/fish4.gif', minScale: 1.00, maxScale: 1.45, points: 90, weight: 8, mouthX: 0.86, mouthY: 0.56, mouthR: 10 },
-    { src: '../images/fish5.gif', minScale: 1.10, maxScale: 1.60, points: 80, weight: 4, mouthX: 0.85, mouthY: 0.56, mouthR: 9, hookOffX: -18, hookOffY: -30 }
-
+    { sheet: '../images/fish1-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 0.55, maxScale: 0.85, points: 10, weight: 40, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
+    { sheet: '../images/fish2-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 0.70, maxScale: 1.05, points: 20, weight: 30, mouthX: 0.88, mouthY: 0.56, mouthR: 14, hookOffX: -5 },
+    { sheet: '../images/fish3-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 0.85, maxScale: 1.25, points: 35, weight: 18, mouthX: 0.87, mouthY: 0.56, mouthR: 12, hookOffX: -5 },
+    { sheet: '../images/fish4-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 1.00, maxScale: 1.45, points: 90, weight: 8, mouthX: 0.86, mouthY: 0.56, mouthR: 10 },
+    { sheet: '../images/fish5-sheet.png', frames: 10, cols: 5, rows: 2, fps: 12, minScale: 1.10, maxScale: 1.60, points: 80, weight: 4, mouthX: 0.85, mouthY: 0.56, mouthR: 9, hookOffX: -18, hookOffY: -30 }
 ];
-
 
 function pickFishByRarity() {
     const totalWeight = fishImages.reduce((sum, f) => sum + f.weight, 0);
@@ -131,7 +595,6 @@ function updateCaughtFishPosition() {
     const x = hookCenter.x - wrapperRect.left - fishW / 2 + offX;
     const y = hookCenter.y - wrapperRect.top - fishH * 0.1 + offY;
 
-
     const maxX = gameWrapperElement.clientWidth - fishW;
 
     caughtFish.style.left = Math.max(0, Math.min(x, maxX)) + 'px';
@@ -146,11 +609,32 @@ function updateCaughtFishPosition() {
         score += pts;
 
         const scoreEl = document.getElementById('score');
-        if (scoreEl) scoreEl.textContent = score;
+        if (scoreEl) scoreEl.textContent = formatScore(score);
+
+        const wrapperRect = gameWrapperElement.getBoundingClientRect();
+        const hookRect = hookElement.getBoundingClientRect();
+
+        showScorePopup(
+            pts,
+            hookRect.left - wrapperRect.left - 75,
+            hookRect.top - wrapperRect.top - 55
+        );
 
         caughtFish.remove();
         caughtFish = null;
     }
+}
+
+function showScorePopup(points, x, y) {
+    const popup = document.createElement('div');
+    popup.className = 'score-popup';
+    popup.textContent = `+${points}`;
+
+    popup.style.left = x + 'px';
+    popup.style.top = y + 'px';
+
+    gameWrapperElement.appendChild(popup);
+    setTimeout(() => popup.remove(), 900);
 }
 
 function damagePlayer() {
@@ -160,102 +644,33 @@ function damagePlayer() {
     invulnerableUntil = now + INVULN_MS;
     lives = Math.max(0, lives - 1);
 
-    const livesEl = document.getElementById('lives');
-    if (livesEl) livesEl.textContent = lives;
+    if (!paused) playDamageFX();
+
+    renderHearts();
 
     if (lives === 0) {
-        if (caughtFish) {
-            caughtFish.remove();
-            caughtFish = null;
-        }
+        gameOver();
     }
 }
-
-const _alphaCanvas = document.createElement('canvas');
-const _alphaCtx = _alphaCanvas.getContext('2d', { willReadFrequently: true });
-const ALPHA_THRESHOLD = 30;
-
-function pointHitsOpaquePixel(imgEl, clientX, clientY) {
-    if (!imgEl.isConnected) return false;
-
-    const rect = imgEl.getBoundingClientRect();
-    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return false;
-
-    const nx = (clientX - rect.left) / rect.width;
-    const ny = (clientY - rect.top) / rect.height;
-
-    const w = imgEl.naturalWidth || 0;
-    const h = imgEl.naturalHeight || 0;
-    if (!w || !h) return false;
-
-    const px = Math.floor(nx * w);
-    const py = Math.floor(ny * h);
-
-    _alphaCanvas.width = w;
-    _alphaCanvas.height = h;
-    _alphaCtx.clearRect(0, 0, w, h);
-    _alphaCtx.drawImage(imgEl, 0, 0, w, h);
-
-    const data = _alphaCtx.getImageData(px, py, 1, 1).data;
-    return data[3] > ALPHA_THRESHOLD;
-}
-
-function hookHitsHazardAlpha(hazardEl, hookCircle) {
-    const rect = hazardEl.getBoundingClientRect();
-
-    const minX = rect.left - hookCircle.r;
-    const maxX = rect.right + hookCircle.r;
-    const minY = rect.top - hookCircle.r;
-    const maxY = rect.bottom + hookCircle.r;
-
-    if (hookCircle.x < minX || hookCircle.x > maxX || hookCircle.y < minY || hookCircle.y > maxY) return false;
-
-    const r = hookCircle.r;
-    const samples = [
-        { x: hookCircle.x, y: hookCircle.y },
-        { x: hookCircle.x + r, y: hookCircle.y },
-        { x: hookCircle.x - r, y: hookCircle.y },
-        { x: hookCircle.x, y: hookCircle.y + r },
-        { x: hookCircle.x, y: hookCircle.y - r },
-        { x: hookCircle.x + r * 0.7, y: hookCircle.y + r * 0.7 },
-        { x: hookCircle.x - r * 0.7, y: hookCircle.y + r * 0.7 },
-        { x: hookCircle.x + r * 0.7, y: hookCircle.y - r * 0.7 },
-        { x: hookCircle.x - r * 0.7, y: hookCircle.y - r * 0.7 }
-    ];
-
-    for (const p of samples) {
-        if (pointHitsOpaquePixel(hazardEl, p.x, p.y)) return true;
-    }
-    return false;
-}
-
 
 function spawnHazard() {
     const hazardData = pickHazardByRarity();
 
-    const item = document.createElement('img');
-    item.classList.add('fish');
-    item.src = hazardData.src;
-
-    item.dataset.isHazard = '1';
-    item.dataset.hitR = hazardData.hitR;
-
     const fromLeft = Math.random() < 0.5;
     const scale = hazardData.minScale + Math.random() * (hazardData.maxScale - hazardData.minScale);
 
+    const wrapW = waterAreaElement.clientWidth;
+    const wrapH = waterAreaElement.clientHeight;
+
+    const item = (hazardData.type === 'img') ? document.createElement('img') : document.createElement('div');
+    item.classList.add('fish');
+
+    item.dataset.isHazard = '1';
+    item.dataset.hitR = hazardData.hitR;
     item.dataset.scale = scale;
     item.dataset.fromLeft = fromLeft ? '1' : '0';
 
-    item.onload = () => {
-        const wrapW = waterAreaElement.clientWidth;
-        const wrapH = waterAreaElement.clientHeight;
-
-        const itemW = item.naturalWidth * scale;
-        const itemH = item.naturalHeight * scale;
-
-        item.style.width = itemW + 'px';
-        item.style.height = itemH + 'px';
-
+    function continueHazardSetup(itemW, itemH) {
         const padding = 10;
         let y = 0;
         let ok = false;
@@ -286,40 +701,76 @@ function spawnHazard() {
         const baseSpeed = 1 + Math.random() * 2.2;
         const speed = baseSpeed / (0.7 + scale);
 
-        function moveItem() {
+        let lastT = performance.now();
+
+        function moveItem(t) {
             if (!item.isConnected) return;
 
-            const x = parseFloat(item.style.left) || 0;
-            const nextX = fromLeft ? x + speed : x - speed;
-            item.style.left = nextX + 'px';
+            const dt = t - lastT;
+            lastT = t;
 
-            const hookCircle = getHookCircle();
+            if (!paused) {
+                if (hazardData.type === 'sprite') {
+                    stepSprite(item, dt, hazardData.frames, hazardData.frameMap);
+                }
 
-            if (hookHitsHazardAlpha(item, hookCircle)) {
-                damagePlayer();
-                item.remove();
-                return;
-            }
-            
-            if (nextX > wrapW + itemW + 100 || nextX < -itemW - 100) {
-                item.remove();
-                return;
+                const x = parseFloat(item.style.left) || 0;
+                const nextX = fromLeft ? x + speed : x - speed;
+                item.style.left = nextX + 'px';
+
+                const hookCircle = getHookCircle();
+
+                const rect = item.getBoundingClientRect();
+                const c = getCenter(rect);
+                const hazardCircle = { x: c.x, y: c.y, r: Math.max(10, Math.min(rect.width, rect.height) * 0.28) };
+
+                if (circlesHit(hookCircle, hazardCircle)) {
+                    damagePlayer();
+                    item.remove();
+                    return;
+                }
+
+                if (nextX > wrapW + itemW + 100 || nextX < -itemW - 100) {
+                    item.remove();
+                    return;
+                }
             }
 
             item._rafId = requestAnimationFrame(moveItem);
         }
 
-        moveItem();
-    };
+        item._rafId = requestAnimationFrame(moveItem);
+    }
+
+    if (hazardData.type === 'img') {
+        item.src = hazardData.src;
+        item.onload = () => {
+            const itemW = item.naturalWidth * scale;
+            const itemH = item.naturalHeight * scale;
+            item.style.width = itemW + 'px';
+            item.style.height = itemH + 'px';
+            continueHazardSetup(itemW, itemH);
+        };
+        return;
+    }
+
+    item.classList.add('sprite');
+
+    loadSheetSize(hazardData.sheet).then(({ w, h }) => {
+        initSpriteDiv(item, hazardData.sheet, w, h, hazardData.cols, hazardData.rows, hazardData.fps, scale);
+
+        const itemW = parseFloat(item.style.width);
+        const itemH = parseFloat(item.style.height);
+
+        continueHazardSetup(itemW, itemH);
+    }).catch(() => { });
 }
 
 function spawnFish() {
     const fishData = pickFishByRarity();
 
-
-    const fish = document.createElement('img');
-    fish.classList.add('fish');
-    fish.src = fishData.src;
+    const fish = document.createElement('div');
+    fish.classList.add('fish', 'sprite');
 
     const fromLeft = Math.random() < 0.5;
     const scale = fishData.minScale + Math.random() * (fishData.maxScale - fishData.minScale);
@@ -333,15 +784,14 @@ function spawnFish() {
     fish.dataset.hookOffX = fishData.hookOffX || 0;
     fish.dataset.hookOffY = fishData.hookOffY || 0;
 
-    fish.onload = () => {
+    loadSheetSize(fishData.sheet).then(({ w, h }) => {
+        initSpriteDiv(fish, fishData.sheet, w, h, fishData.cols, fishData.rows, fishData.fps, scale);
+
         const wrapW = waterAreaElement.clientWidth;
         const wrapH = waterAreaElement.clientHeight;
 
-        const fishW = fish.naturalWidth * scale;
-        const fishH = fish.naturalHeight * scale;
-
-        fish.style.width = fishW + 'px';
-        fish.style.height = fishH + 'px';
+        const fishW = parseFloat(fish.style.width);
+        const fishH = parseFloat(fish.style.height);
 
         const padding = 10;
         let y = 0;
@@ -373,40 +823,48 @@ function spawnFish() {
         const baseSpeed = 1 + Math.random() * 2;
         const speed = baseSpeed / (0.7 + scale);
 
-        function moveFish() {
+        let lastT = performance.now();
+
+        function moveFish(t) {
             if (!fish.isConnected) return;
             if (fish === caughtFish) return;
 
-            const x = parseFloat(fish.style.left) || 0;
-            const nextX = fromLeft ? x + speed : x - speed;
-            fish.style.left = nextX + 'px';
+            const dt = t - lastT;
+            lastT = t;
 
-            if (!caughtFish) {
-                const hookCircle = getHookCircle();
-                const mouthCircle = getFishMouthCircle(fish);
-                if (circlesHit(hookCircle, mouthCircle)) {
-                    attachToHook(fish);
+            if (!paused) {
+                stepSprite(fish, dt, fishData.frames);
+
+                const x = parseFloat(fish.style.left) || 0;
+                const nextX = fromLeft ? x + speed : x - speed;
+                fish.style.left = nextX + 'px';
+
+                if (!caughtFish) {
+                    const hookCircle = getHookCircle();
+                    const mouthCircle = getFishMouthCircle(fish);
+                    if (circlesHit(hookCircle, mouthCircle)) {
+                        attachToHook(fish);
+                        return;
+                    }
+                }
+
+                if (nextX > wrapW + fishW + 100 || nextX < -fishW - 100) {
+                    fish.remove();
                     return;
                 }
-            }
-
-            if (nextX > wrapW + fishW + 100 || nextX < -fishW - 100) {
-                fish.remove();
-                return;
             }
 
             fish._rafId = requestAnimationFrame(moveFish);
         }
 
-        moveFish();
-    };
+        fish._rafId = requestAnimationFrame(moveFish);
+    }).catch(() => { });
 }
 
 document.addEventListener('mousemove', () => {
+    if (paused) return;
     updateCaughtFishPosition();
 });
-
-
 
 const HEART_FULL_SRC = '../images/heart-full.png';
 const HEART_EMPTY_SRC = '../images/heart-empty.png';
@@ -427,25 +885,82 @@ function renderHearts() {
 
 renderHearts();
 
-function damagePlayer() {
-    const now = Date.now();
-    if (now < invulnerableUntil) return;
+window.addEventListener('blur', () => { if (!inCountdown) pauseGame(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && !inCountdown) pauseGame(); });
 
-    invulnerableUntil = now + INVULN_MS;
-    lives = Math.max(0, lives - 1);
+document.addEventListener('keydown', (e) => {
+    if (inCountdown) return;
+
+    if (e.key === 'Escape') {
+        if (paused) {
+            if (isAudioOpen()) closeAudioPanel();
+            else resumeGame();
+        } else {
+            pauseGame();
+        }
+    }
+
+    if (paused && isAudioOpen()) {
+        const key = e.key.toLowerCase();
+
+        if (key === 'm') {
+            e.preventDefault();
+            document.getElementById('btn-mute')?.click();
+            return;
+        }
+
+        const active = document.activeElement;
+        const hovered = document.querySelector('#audio-panel input[type="range"].is-hot');
+        const target = (active && active.tagName === 'INPUT' && active.type === 'range')
+            ? active
+            : hovered
+                ? hovered
+                : document.getElementById('musicVol');
+
+        if (!target) return;
+
+        const big = e.shiftKey ? 5 : 1;
+
+        if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeRange(target.id, -big); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); nudgeRange(target.id, +big); }
+    }
+
+});
+
+document.getElementById('btn-resume')?.addEventListener('click', () => resumeGame());
+
+document.getElementById('btn-restart')?.addEventListener('click', () => {
+    hideGameOverOverlay();
+    waterAreaElement.querySelectorAll('.fish').forEach(e => e.remove());
+    caughtFish?.remove();
+    caughtFish = null;
+
+    score = 0;
+    lives = 3;
+    fishScored = false;
+
+    const scoreEl = document.getElementById('score');
+    if (scoreEl) scoreEl.textContent = formatScore(score);
 
     renderHearts();
 
-    if (lives === 0) {
-        if (caughtFish) {
-            caughtFish.remove();
-            caughtFish = null;
-        }
-    }
-}
+    gameStarted = false;
+    paused = false;
 
-spawnFish();
-setInterval(spawnFish, 4000);
+    hidePauseOverlay();
+    showPausePanel();
 
-spawnHazard();
-setInterval(spawnHazard, 5500);
+    resetLineAndHook();
+    startCountdown();
+});
+
+document.getElementById('btn-go-menu')?.addEventListener('click', () => {
+    window.location.href = 'index.html';
+});
+
+document.getElementById('btn-go-restart')?.addEventListener('click', () => {
+    hideGameOverOverlay();
+    document.getElementById('btn-restart')?.click();
+});
+
+startCountdown();

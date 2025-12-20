@@ -7,6 +7,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Game</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet">
 </head>
 
 <body>
@@ -15,16 +19,67 @@
 
         <div id="hud">
             <div id="hearts" aria-label="Lives"></div>
-            <div id="score-wrap">Score: <span id="score">0</span></div>
+            <div id="score-wrap" class="jersey-10-regular">Score: <span id="score">0</span></div>
         </div>
-        
+
+        <div id="pause-overlay" class="pause-overlay">
+            <div id="pause-panel" class="pause-panel">
+                <h2 class="pause-title">Paused</h2>
+                <button id="btn-resume" class="pause-btn">Resume</button>
+                <button id="btn-sound" class="pause-btn">Sound</button>
+                <button id="btn-restart" class="pause-btn">Restart</button>
+                <a href="./index.html" class="pause-btn link-btn">Main Menu</a>
+            </div>
+
+            <div id="audio-panel" class="pause-panel" style="display:none;">
+                <h2 class="pause-title">Sound</h2>
+
+                <div class="opt-row">
+                    <label class="opt-label" for="musicVol">Music</label>
+                    <input id="musicVol" type="range" min="0" max="100" value="70" step="1">
+                    <span class="opt-val" id="musicVolVal">70%</span>
+                </div>
+
+                <div class="opt-row">
+                    <label class="opt-label" for="sfxVol">SFX</label>
+                    <input id="sfxVol" type="range" min="0" max="100" value="80" step="1">
+                    <span class="opt-val" id="sfxVolVal">80%</span>
+                </div>
+
+                <button id="btn-mute" class="pause-btn" type="button">Mute: Off</button>
+
+                <button id="btn-audio-back" class="pause-btn">Back</button>
+            </div>
+        </div>
+
         <div class="water-area"></div>
         <div id="fishing-line">
             <div id="hook"></div>
         </div>
         <div id="line-mask"></div>
-    </div>
 
+        <div id="damage-vignette"></div>
+
+        <div id="start-overlay" class="start-overlay show" aria-hidden="false">
+            <div id="start-count" class="start-count jersey-10-regular">3</div>
+        </div>
+
+        <div id="gameover-overlay" class="gameover-overlay" aria-hidden="true">
+            <div class="gameover-panel">
+                <div class="gameover-title jersey-10-regular">GAME OVER</div>
+
+                <div class="gameover-stats jersey-10-regular">
+                    <div>Score: <span id="go-score">0</span></div>
+                    <div>Best: <span id="go-best">0</span></div>
+                    <div id="go-badge" class="go-badge" style="display:none;">NEW HIGH SCORE!</div>
+                </div>
+
+                <button id="btn-go-restart" class="pause-btn jersey-10-regular">Restart</button>
+                <button id="btn-go-menu" class="pause-btn jersey-10-regular">Main Menu</button>
+            </div>
+        </div>
+
+    </div>
 </body>
 
 </html>
